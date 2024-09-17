@@ -7,6 +7,7 @@ from plugwise.exceptions import (
     ConnectionFailedError,
     InvalidAuthentication,
     InvalidXMLError,
+    PlugwiseError,
     ResponseError,
     UnsupportedDeviceError,
 )
@@ -38,7 +39,10 @@ TOM = {
         "hardware": "1",
         "location": "f871b8c4d63549319221e294e4f88074",
         "model": "Tom/Floor",
-        "name": "Tom Badkamer",
+        "name": "Tom Zolder",
+        "binary_sensors": {
+            "low_battery": False,
+        },
         "sensors": {
             "battery": 99,
             "temperature": 18.6,
@@ -83,6 +87,7 @@ async def test_load_unload_config_entry(
         (ConnectionFailedError, ConfigEntryState.SETUP_RETRY),
         (InvalidAuthentication, ConfigEntryState.SETUP_ERROR),
         (InvalidXMLError, ConfigEntryState.SETUP_RETRY),
+        (PlugwiseError, ConfigEntryState.SETUP_RETRY),
         (ResponseError, ConfigEntryState.SETUP_RETRY),
         (UnsupportedDeviceError, ConfigEntryState.SETUP_ERROR),
     ],
@@ -103,6 +108,28 @@ async def test_gateway_config_entry_not_ready(
 
     assert len(mock_smile_anna.connect.mock_calls) == 1
     assert mock_config_entry.state is entry_state
+
+
+async def test_device_in_dr(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_smile_p1: MagicMock,
+    device_registry: dr.DeviceRegistry,
+) -> None:
+    """Test Gateway device registry data."""
+    mock_config_entry.add_to_hass(hass)
+    assert await async_setup_component(hass, DOMAIN, {})
+    await hass.async_block_till_done()
+
+    device_entry = device_registry.async_get_device(
+        identifiers={(DOMAIN, "a455b61e52394b2db5081ce025a430f3")}
+    )
+    assert device_entry.hw_version == "AME Smile 2.0 board"
+    assert device_entry.manufacturer == "Plugwise"
+    assert device_entry.model == "Gateway"
+    assert device_entry.model_id == "smile"
+    assert device_entry.name == "Smile P1"
+    assert device_entry.sw_version == "4.4.2"
 
 
 @pytest.mark.parametrize(
@@ -219,7 +246,7 @@ async def test_update_device(
                 entity_registry, mock_config_entry.entry_id
             )
         )
-        == 28
+        == 31
     )
     assert (
         len(
@@ -242,7 +269,7 @@ async def test_update_device(
                     entity_registry, mock_config_entry.entry_id
                 )
             )
-            == 33
+            == 37
         )
         assert (
             len(
@@ -256,3 +283,30 @@ async def test_update_device(
         for device_entry in list(device_registry.devices.values()):
             item_list.extend(x[1] for x in device_entry.identifiers)
         assert "01234567890abcdefghijklmnopqrstu" in item_list
+
+    # Remove the existing Tom/Floor
+    data.devices.pop("1772a4ea304041adb83f357b751341ff")
+    with patch(HA_PLUGWISE_SMILE_ASYNC_UPDATE, return_value=data):
+        async_fire_time_changed(hass, utcnow + timedelta(minutes=1))
+        await hass.async_block_till_done()
+
+        assert (
+            len(
+                er.async_entries_for_config_entry(
+                    entity_registry, mock_config_entry.entry_id
+                )
+            )
+            == 31
+        )
+        assert (
+            len(
+                dr.async_entries_for_config_entry(
+                    device_registry, mock_config_entry.entry_id
+                )
+            )
+            == 6
+        )
+        item_list: list[str] = []
+        for device_entry in list(device_registry.devices.values()):
+            item_list.extend(x[1] for x in device_entry.identifiers)
+        assert "1772a4ea304041adb83f357b751341ff" not in item_list

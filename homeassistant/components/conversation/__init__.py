@@ -40,24 +40,29 @@ from .const import (
     OLD_HOME_ASSISTANT_AGENT,
     SERVICE_PROCESS,
     SERVICE_RELOAD,
+    ConversationEntityFeature,
 )
 from .default_agent import async_get_default_agent, async_setup_default_agent
 from .entity import ConversationEntity
 from .http import async_setup as async_setup_conversation_http
 from .models import AbstractConversationAgent, ConversationInput, ConversationResult
+from .trace import ConversationTraceEventType, async_conversation_trace_append
 
 __all__ = [
     "DOMAIN",
     "HOME_ASSISTANT_AGENT",
     "OLD_HOME_ASSISTANT_AGENT",
+    "ConversationEntity",
+    "ConversationEntityFeature",
+    "ConversationInput",
+    "ConversationResult",
+    "ConversationTraceEventType",
+    "async_conversation_trace_append",
     "async_converse",
     "async_get_agent_info",
     "async_set_agent",
     "async_setup",
     "async_unset_agent",
-    "ConversationEntity",
-    "ConversationInput",
-    "ConversationResult",
 ]
 
 _LOGGER = logging.getLogger(__name__)
@@ -116,7 +121,8 @@ def async_unset_agent(
     get_agent_manager(hass).async_unset_agent(config_entry.entry_id)
 
 
-async def async_get_conversation_languages(
+@callback
+def async_get_conversation_languages(
     hass: HomeAssistant, agent_id: str | None = None
 ) -> set[str] | Literal["*"]:
     """Return languages supported by conversation agents.
@@ -127,7 +133,6 @@ async def async_get_conversation_languages(
     """
     agent_manager = get_agent_manager(hass)
     entity_component: EntityComponent[ConversationEntity] = hass.data[DOMAIN]
-    languages: set[str] = set()
     agents: list[ConversationEntity | AbstractConversationAgent]
 
     if agent_id:
@@ -136,6 +141,10 @@ async def async_get_conversation_languages(
         if agent is None:
             raise ValueError(f"Agent {agent_id} not found")
 
+        # Shortcut
+        if agent.supported_languages == MATCH_ALL:
+            return MATCH_ALL
+
         agents = [agent]
 
     else:
@@ -143,11 +152,16 @@ async def async_get_conversation_languages(
         for info in agent_manager.async_get_agent_info():
             agent = agent_manager.async_get_agent(info.id)
             assert agent is not None
+
+            # Shortcut
+            if agent.supported_languages == MATCH_ALL:
+                return MATCH_ALL
+
             agents.append(agent)
 
+    languages: set[str] = set()
+
     for agent in agents:
-        if agent.supported_languages == MATCH_ALL:
-            return MATCH_ALL
         for language_tag in agent.supported_languages:
             languages.add(language_tag)
 
@@ -178,6 +192,18 @@ def async_get_agent_info(
             return agent_info
 
     return None
+
+
+async def async_prepare_agent(
+    hass: HomeAssistant, agent_id: str | None, language: str
+) -> None:
+    """Prepare given agent."""
+    agent = async_get_agent(hass, agent_id)
+
+    if agent is None:
+        raise ValueError("Invalid agent specified")
+
+    await agent.async_prepare(language)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:

@@ -1,6 +1,6 @@
 """Test Times of the Day Binary Sensor."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, tzinfo
 
 from freezegun.api import FrozenDateTimeFactory
 import pytest
@@ -16,13 +16,13 @@ from tests.common import assert_setup_component, async_fire_time_changed
 
 
 @pytest.fixture
-def hass_time_zone():
+def hass_time_zone() -> str:
     """Return default hass timezone."""
     return "US/Pacific"
 
 
 @pytest.fixture(autouse=True)
-async def setup_fixture(hass, hass_time_zone):
+async def setup_fixture(hass: HomeAssistant, hass_time_zone: str) -> None:
     """Set up things to be run when tests are started."""
     hass.config.latitude = 50.27583
     hass.config.longitude = 18.98583
@@ -30,7 +30,7 @@ async def setup_fixture(hass, hass_time_zone):
 
 
 @pytest.fixture
-def hass_tz_info(hass):
+def hass_tz_info(hass: HomeAssistant) -> tzinfo | None:
     """Return timezone info for the hass timezone."""
     return dt_util.get_time_zone(hass.config.time_zone)
 
@@ -658,7 +658,9 @@ async def test_dst1(
     assert state.state == STATE_OFF
 
 
-async def test_dst2(hass, freezer, hass_tz_info):
+async def test_dst2(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, hass_tz_info
+) -> None:
     """Test DST when there's a time switch in the East."""
     hass.config.time_zone = "CET"
     dt_util.set_default_time_zone(dt_util.get_time_zone("CET"))
@@ -684,7 +686,9 @@ async def test_dst2(hass, freezer, hass_tz_info):
     assert state.state == STATE_OFF
 
 
-async def test_dst3(hass, freezer, hass_tz_info):
+async def test_dst3(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, hass_tz_info
+) -> None:
     """Test DST when there's a time switch forward in the West."""
     hass.config.time_zone = "US/Pacific"
     dt_util.set_default_time_zone(dt_util.get_time_zone("US/Pacific"))
@@ -712,7 +716,9 @@ async def test_dst3(hass, freezer, hass_tz_info):
     assert state.state == STATE_OFF
 
 
-async def test_dst4(hass, freezer, hass_tz_info):
+async def test_dst4(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, hass_tz_info
+) -> None:
     """Test DST when there's a time switch backward in the West."""
     hass.config.time_zone = "US/Pacific"
     dt_util.set_default_time_zone(dt_util.get_time_zone("US/Pacific"))
